@@ -42,6 +42,7 @@ import base64
 import decimal
 import json
 import logging
+import time
 try:
     import urllib.parse as urlparse
 except ImportError:
@@ -49,7 +50,7 @@ except ImportError:
 
 USER_AGENT = "AuthServiceProxy/0.1"
 
-HTTP_TIMEOUT = 30
+HTTP_TIMEOUT = 180
 
 log = logging.getLogger("BitcoinRPC")
 
@@ -136,13 +137,14 @@ class AuthServiceProxy(object):
                              'Content-type': 'application/json'})
         self.__conn.sock.settimeout(self.__timeout)
 
+        self.__req_time = time.time()
         response = self._get_response()
         if response.get('error') is not None:
             raise JSONRPCException(response['error'])
         elif 'result' not in response:
             raise JSONRPCException({
                 'code': -343, 'message': 'missing JSON-RPC result'})
-        
+
         return response['result']
 
     def batch_(self, rpc_calls):
@@ -177,6 +179,8 @@ class AuthServiceProxy(object):
 
     def _get_response(self):
         http_response = self.__conn.getresponse()
+        req = self.__service_name
+        elapsed = time.time() - self.__req_time
         if http_response is None:
             raise JSONRPCException({
                 'code': -342, 'message': 'missing HTTP response from server'})
@@ -189,7 +193,11 @@ class AuthServiceProxy(object):
         responsedata = http_response.read().decode('utf8')
         response = json.loads(responsedata, parse_float=decimal.Decimal)
         if "error" in response and response["error"] is None:
-            log.debug("<-%s- %s"%(response["id"], json.dumps(response["result"], default=EncodeDecimal)))
+            log.debug("<-%s- %s %s Time: %.2f s" % (
+                                                response["id"],
+                                                self.__service_name,
+                                                json.dumps(response["result"], default=EncodeDecimal),
+                                                elapsed))
         else:
             log.debug("<-- "+responsedata)
         return response
